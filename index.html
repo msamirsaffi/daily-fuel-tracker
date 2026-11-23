@@ -24,6 +24,7 @@
     --fat: #a8650f;
     --carb: #7a4fb0;
     --caf: #8a5a2b;
+    --water: #1c8aa8;
     --warn: #c2410c;
     --warn-bg: #fde8e2;
     --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -33,13 +34,13 @@
     :root:not([data-theme="light"]) {
       --bg: #101512; --surface: #1a211c; --surface-2: #232c26; --fg: #e8eee9;
       --muted: #96a59b; --line: #2f3a33; --accent: #4cc38a; --accent-fg: #0c1a12;
-      --protein: #7aa7f0; --fat: #e0a455; --carb: #b896e8; --caf: #d4a06a; --warn: #f2994a; --warn-bg: #3a2218; color-scheme: dark;
+      --protein: #7aa7f0; --fat: #e0a455; --carb: #b896e8; --caf: #d4a06a; --water: #5cc3e0; --warn: #f2994a; --warn-bg: #3a2218; color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #101512; --surface: #1a211c; --surface-2: #232c26; --fg: #e8eee9;
     --muted: #96a59b; --line: #2f3a33; --accent: #4cc38a; --accent-fg: #0c1a12;
-    --protein: #7aa7f0; --fat: #e0a455; --carb: #b896e8; --caf: #d4a06a; --warn: #f2994a; --warn-bg: #3a2218; color-scheme: dark;
+    --protein: #7aa7f0; --fat: #e0a455; --carb: #b896e8; --caf: #d4a06a; --water: #5cc3e0; --warn: #f2994a; --warn-bg: #3a2218; color-scheme: dark;
   }
 
   * { box-sizing: border-box; }
@@ -69,13 +70,16 @@
   h1 { font-family: var(--font-display); font-size: 1.1rem; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   .date { color: var(--muted); font-size: 0.85rem; }
   .meters { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .meters.small { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+  .meters.small { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  @media (max-width: 359px) { .meters.small { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .meter { min-width: 0; }
   .meter .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
   .meter .value { font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; line-height: 1.15; }
   .meter .value small { font-size: 0.8rem; color: var(--muted); font-weight: 500; font-family: var(--font-body); }
-  .small .meter .value { font-size: 1.05rem; }
-  .small .meter .value small { font-size: 0.72rem; }
+  .small .meter .label { font-size: 0.64rem; letter-spacing: 0.05em; }
+  .small .meter .value { font-size: 0.95rem; }
+  .small .meter .value small { font-size: 0.64rem; }
+  .small .meter .left { font-size: 0.68rem; }
   .bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin: 5px 0 3px; }
   .small .bar { height: 6px; }
   .bar > i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--accent); transition: width .25s ease; }
@@ -83,6 +87,7 @@
   .meter.fat .bar > i { background: var(--fat); }
   .meter.carb .bar > i { background: var(--carb); }
   .meter.caf .bar > i { background: var(--caf); }
+  .meter.water .bar > i { background: var(--water); }
   .meter.over .bar > i { background: var(--warn); }
   .meter .left { font-size: 0.76rem; color: var(--muted); }
   .meter.over .left { color: var(--warn); font-weight: 600; }
@@ -121,6 +126,8 @@
     background: var(--surface-2); border: 1px solid var(--line); font-size: 1.3rem; line-height: 1;
     display: grid; place-items: center;
   }
+  .tile.has .macros, .tile.has .sub { padding-right: 38px; }
+  .editing .tile.has .macros, .editing .tile.has .sub { padding-right: 0; }
   .editing .tile .add { border-style: dashed; }
   .editing .tile .badge, .editing .tile .minus { display: none; }
 
@@ -230,6 +237,12 @@
         <div class="bar"><i id="bCaf"></i></div>
         <div class="left num" id="lCaf"></div>
       </div>
+      <div class="meter water" id="mWater">
+        <div class="label">Water</div>
+        <div class="value num"><span id="vWater">0</span><small>oz / <span id="gWater">0</span></small></div>
+        <div class="bar"><i id="bWater"></i></div>
+        <div class="left num" id="lWater"></div>
+      </div>
     </div>
   </header>
 
@@ -253,7 +266,8 @@
     <div class="fields">
       <div><label class="l" for="goalCal">Calories</label><input id="goalCal" type="number" inputmode="numeric" min="0"></div>
       <div><label class="l" for="goalPro">Protein (g)</label><input id="goalPro" type="number" inputmode="numeric" min="0"></div>
-      <div class="wide"><label class="l" for="goalCaf">Caffeine limit (mg)</label><input id="goalCaf" type="number" inputmode="numeric" min="0"></div>
+      <div><label class="l" for="goalWater">Water (oz)</label><input id="goalWater" type="number" inputmode="numeric" min="0"></div>
+      <div><label class="l" for="goalCaf">Caffeine limit (mg)</label><input id="goalCaf" type="number" inputmode="numeric" min="0"></div>
     </div>
     <p class="hint" style="margin:10px 0 0">Fat and carb targets follow from calories and protein: fat is set to 30% of calories, and carbs fill what remains after protein and fat. The default caffeine limit is 400 mg, the usual guideline for healthy adults.</p>
   </div>
@@ -308,6 +322,9 @@
   var SUGAR = { slate: 1, fairlife: 2, oikos: 5, banana: 14, cokez: 0, monster: 0, water: 0, chicken: 0,
                 wonton: 2, rice: 0, naan: 3, tzatziki: 1, egg: 0.5, bites: 0 };
   STARTER.forEach(function (f) { f.sugar = SUGAR[f.id] || 0; });
+  // Ounces of water per portion that count toward the water goal.
+  var WATER = { water: 24 };
+  STARTER.forEach(function (f) { f.water = WATER[f.id] || 0; });
 
   var state = load();
   var editMode = false;
@@ -317,7 +334,7 @@
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function fresh() {
-    return { goals: { cal: 2200, pro: 150, caf: 400 }, foods: clone(STARTER), days: {}, seen: STARTER.map(function (f) { return f.id; }), v: 2, ts: 0 };
+    return { goals: { cal: 2200, pro: 150, caf: 400, water: 100 }, foods: clone(STARTER), days: {}, seen: STARTER.map(function (f) { return f.id; }), v: 2, ts: 0 };
   }
   function readLocal(key) {
     try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
@@ -327,6 +344,10 @@
     try {
       if (!s || !Array.isArray(s.foods) || !s.goals || !s.days) return fresh();
       if (!s.goals.caf && s.goals.caf !== 0) s.goals.caf = 400;
+      if (!s.goals.water && s.goals.water !== 0) s.goals.water = 100;
+      s.foods.forEach(function (f) {
+        if (f.water === undefined) f.water = WATER[f.id] || 0;
+      });
       // Add starter foods introduced after this device last saved, without bringing back ones you deleted.
       var seen = s.seen || [];
       if (!s.seen) seen = STARTER.filter(function (f) { return f.id !== 'egg' && f.id !== 'bites'; }).map(function (f) { return f.id; });
@@ -484,11 +505,11 @@
   function entries(key) { var d = state.days[key]; return (d && d.entries) || []; }
 
   function totalsFor(key) {
-    var t = { cal: 0, pro: 0, fat: 0, carb: 0, caf: 0 };
+    var t = { cal: 0, pro: 0, fat: 0, carb: 0, caf: 0, water: 0 };
     entries(key).forEach(function (e) {
       var f = foodById(e.id); if (!f) return;
       t.cal += f.cal * e.q; t.pro += f.pro * e.q; t.fat += (f.fat || 0) * e.q;
-      t.carb += (f.carb || 0) * e.q; t.caf += (f.caf || 0) * e.q;
+      t.carb += (f.carb || 0) * e.q; t.caf += (f.caf || 0) * e.q; t.water += (f.water || 0) * e.q;
     });
     return t;
   }
@@ -502,10 +523,11 @@
     var cal = state.goals.cal, pro = state.goals.pro;
     var fat = 0.30 * cal / 9;
     var carb = Math.max(0, (cal - 4 * pro - 9 * fat) / 4);
-    return { cal: cal, pro: pro, fat: fat, carb: carb, caf: state.goals.caf };
+    return { cal: cal, pro: pro, fat: fat, carb: carb, caf: state.goals.caf, water: state.goals.water };
   }
 
-  function setMeter(p, value, goal, unit, dec) {
+  // positive: reaching the goal is the aim (water), so going past it is not shown as "over".
+  function setMeter(p, value, goal, unit, dec, positive) {
     var pct = goal > 0 ? Math.min(100, (value / goal) * 100) : 0;
     var show = dec ? g1 : function (n) { return Math.round(n).toLocaleString(); };
     $('v' + p).textContent = show(value);
@@ -513,6 +535,7 @@
     $('b' + p).style.width = pct + '%';
     var left = goal - value, el = $('l' + p), box = $('m' + p);
     if (goal <= 0) { el.textContent = ''; box.classList.remove('over'); return; }
+    if (positive && left <= 0) { el.textContent = 'Goal met'; box.classList.remove('over'); return; }
     if (left >= 0) { el.textContent = show(left) + unit + ' left'; box.classList.remove('over'); }
     else { el.textContent = show(-left) + unit + ' over'; box.classList.add('over'); }
   }
@@ -524,6 +547,7 @@
     setMeter('Fat', t.fat, g.fat, 'g', true);
     setMeter('Carb', t.carb, g.carb, 'g', true);
     setMeter('Caf', t.caf, g.caf, 'mg', false);
+    setMeter('Water', t.water, g.water, 'oz', true, true);
   }
 
   function dayCount(id) {
@@ -539,6 +563,7 @@
     if (document.activeElement !== $('goalCal')) $('goalCal').value = state.goals.cal;
     if (document.activeElement !== $('goalPro')) $('goalPro').value = state.goals.pro;
     if (document.activeElement !== $('goalCaf')) $('goalCaf').value = state.goals.caf;
+    if (document.activeElement !== $('goalWater')) $('goalWater').value = state.goals.water;
     $('editToggle').textContent = editMode ? 'Done' : 'Edit foods';
     $('foodsTitle').textContent = editMode ? 'Tap a food to change it' : 'Tap to add';
     $('resetFoods').hidden = !editMode;
@@ -551,7 +576,8 @@
       var sugary = (f.sugar || 0) >= SUGAR_HIGH;
       var sub = 'F ' + g1(f.fat || 0) + ' &middot; C ' + g1(f.carb || 0) +
         (f.sugar > 0 ? ' &middot; ' + (sugary ? '<span class="sg">' + g1(f.sugar) + 'g sugar</span>' : g1(f.sugar) + 'g sugar') : '') +
-        (f.caf > 0 ? ' &middot; <span class="cf">' + g1(f.caf) + ' mg caf</span>' : '');
+        (f.caf > 0 ? ' &middot; <span class="cf">' + g1(f.caf) + ' mg caf</span>' : '') +
+        (f.water > 0 ? ' &middot; ' + g1(f.water) + ' oz water' : '');
       return '<div class="tile' + (has ? ' has' : '') + (sugary ? ' sugary' : '') + '">' +
         '<button type="button" class="add" data-act="add" data-id="' + esc(f.id) + '" aria-label="' +
           (editMode ? 'Edit ' : 'Add ') + esc(f.name) + '">' +
@@ -608,6 +634,7 @@
           '<div><label class="l" for="fCarb">Carbs (g)</label><input id="fCarb" type="number" inputmode="decimal" min="0" step="any" required value="' + esc(f.carb) + '"></div>' +
           '<div><label class="l" for="fSugar">Sugar (g)</label><input id="fSugar" type="number" inputmode="decimal" min="0" step="any" value="' + esc(f.sugar || 0) + '"></div>' +
           '<div><label class="l" for="fCaf">Caffeine (mg)</label><input id="fCaf" type="number" inputmode="decimal" min="0" step="any" value="' + esc(f.caf || 0) + '"></div>' +
+          '<div class="wide"><label class="l" for="fWater">Counts as water (oz)</label><input id="fWater" type="number" inputmode="decimal" min="0" step="any" value="' + esc(f.water || 0) + '"></div>' +
         '</div>' +
         '<div class="actions">' +
           '<button class="btn primary" type="submit">Save</button>' +
@@ -634,7 +661,7 @@
       var label = new Date(k + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
       return '<li><span class="d">' + label + '</span><span class="num">' +
         Math.round(t.cal).toLocaleString() + ' cal &middot; ' + g1(t.pro) + 'g P &middot; ' + g1(t.fat) + 'g F &middot; ' +
-        g1(t.carb) + 'g C &middot; ' + Math.round(t.caf) + ' mg caf</span></li>';
+        g1(t.carb) + 'g C &middot; ' + Math.round(t.caf) + ' mg caf &middot; ' + g1(t.water || 0) + ' oz water</span></li>';
     }).join('');
   }
 
@@ -691,7 +718,7 @@
     var num = function (id) { return Math.max(0, Number($(id).value) || 0); };
     var item = {
       name: $('fName').value.trim(), serving: $('fServ').value.trim(),
-      cal: num('fCal'), pro: num('fPro'), fat: num('fFat'), carb: num('fCarb'), sugar: num('fSugar'), caf: num('fCaf'),
+      cal: num('fCal'), pro: num('fPro'), fat: num('fFat'), carb: num('fCarb'), sugar: num('fSugar'), caf: num('fCaf'), water: num('fWater'),
       weighed: $('fWeighed').checked
     };
     if (!item.name) return;
@@ -721,7 +748,7 @@
       state.goals[key] = Math.max(0, Number(e.target.value) || 0); save(); renderMeters();
     });
   }
-  goalInput('goalCal', 'cal'); goalInput('goalPro', 'pro'); goalInput('goalCaf', 'caf');
+  goalInput('goalCal', 'cal'); goalInput('goalPro', 'pro'); goalInput('goalCaf', 'caf'); goalInput('goalWater', 'water');
 
   function armed(btn, idle, armedText, action) {
     btn.addEventListener('click', function () {
