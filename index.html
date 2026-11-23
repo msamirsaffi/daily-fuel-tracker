@@ -131,7 +131,7 @@
   .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .fields .wide { grid-column: 1 / -1; }
   label.l { display: block; font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], input[type="email"], input[type="password"] {
     width: 100%; margin-top: 4px; font: inherit; font-size: 16px; color: var(--fg);
     background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-height: 44px;
   }
@@ -141,6 +141,19 @@
   .btn { border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); padding: 10px 16px; min-height: 44px; font-weight: 600; }
   .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   .btn.danger { color: var(--warn); }
+
+  /* Sign-in screen and account row */
+  .auth {
+    position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto;
+    padding: max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
+  }
+  .authbox { max-width: 400px; margin: 8vh auto 0; display: grid; gap: 6px; }
+  .authbox h1 { margin-bottom: 4px; }
+  .authbox .l { margin-top: 6px; }
+  .authbox .hint { margin: 4px 0 0; }
+  .authbox .err { color: var(--warn); font-weight: 600; }
+  .acct { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .who { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; min-width: 0; }
 
   /* History */
   .hist { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
@@ -154,6 +167,29 @@
 </style>
 </head>
 <body>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+
+<div id="auth" class="auth" hidden>
+  <form id="authForm" class="panel authbox">
+    <h1>Daily Fuel Tracker</h1>
+    <p class="hint" id="authMsg">Sign in to see your foods and daily log on any device.</p>
+    <div id="emailRow">
+      <label class="l" for="aEmail">Email</label>
+      <input id="aEmail" type="email" autocomplete="email" required>
+    </div>
+    <div>
+      <label class="l" for="aPass" id="aPassLabel">Password</label>
+      <input id="aPass" type="password" autocomplete="current-password" minlength="8" required>
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="submit" id="aSubmit">Sign in</button>
+      <button class="btn" type="button" id="aSignUp">Create account</button>
+    </div>
+    <p class="hint err" id="aErr" role="alert"></p>
+    <button type="button" class="linkbtn" id="aReset" style="justify-self:start">Forgot password?</button>
+  </form>
+</div>
 
 <main id="app">
   <header class="totals">
@@ -201,6 +237,14 @@
     <h2 id="foodsTitle">Tap to add a serving</h2>
     <button class="linkbtn" id="editToggle" type="button">Edit foods</button>
   </div>
+  <div class="panel" id="importBox" hidden>
+    <h3>Import data from this device?</h3>
+    <p class="hint">This browser has foods and logs saved from before you signed in. Import them into your account, or start fresh.</p>
+    <div class="actions">
+      <button class="btn primary" type="button" id="importYes">Import</button>
+      <button class="btn" type="button" id="importNo">Start fresh</button>
+    </div>
+  </div>
   <div id="formHost"></div>
   <div class="grid" id="grid"></div>
 
@@ -221,12 +265,26 @@
     <button class="btn" id="resetDay" type="button">Clear today</button>
     <button class="btn danger" id="resetFoods" type="button" hidden>Restore my foods</button>
   </div>
-  <p class="note">Saved on this device in this browser. Tiles turn red when a portion has 10 g of sugar or more. Nutrition values come from retailer and database listings, so check them against your own labels and edit any that differ.</p>
+  <div class="sec" id="acctSec" hidden><h2>Account</h2></div>
+  <div class="panel acct" id="acct" hidden>
+    <span class="who"><span id="who"></span> &middot; <span id="sync">Saved</span></span>
+    <button class="btn" type="button" id="signOut">Sign out</button>
+  </div>
+  <p class="note">Your foods and logs save to your account when you are signed in. Tiles turn red when a portion has 10 g of sugar or more. Nutrition values come from retailer and database listings, so check them against your own labels and edit any that differ.</p>
 </main>
 
 <script>
 (function () {
-  var KEY = 'daily-fuel-tracker-v2';
+  // Supabase project settings. Leave blank to run without sign-in (data stays in this browser).
+  // The key is the public "anon" key, which is safe to publish because row-level security limits each user to their own row.
+  var CFG = {
+    url: 'https://ooohglexxkizynhjwgnv.supabase.co',
+    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vb2hnbGV4eGtpenluaGp3Z252Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU0NTE3OTUsImV4cCI6MjExMTAyNzc5NX0.Q5ybKziy5fAwgp9jlR4mSU7-ax0NTMDYWFf4tnuBCRI'
+  };
+  var LEGACY = 'daily-fuel-tracker-v2';
+  var KEY = LEGACY;   // becomes a per-user key after sign-in
+  var cloud = (CFG.url && CFG.key && window.supabase) ? window.supabase.createClient(CFG.url, CFG.key) : null;
+  var user = null, pushTimer = null, authMode = 'in';
   // Values are per portion. A "weighed" food is entered in grams and its values are per 100 g.
   var STARTER = [
     { id: 'slate',   name: 'Slate Mocha Latte',            serving: '1 can (11 fl oz)',        cal: 110, pro: 20,  fat: 0.5, carb: 5,   caf: 175 },
@@ -258,13 +316,16 @@
   var $ = function (id) { return document.getElementById(id); };
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
-  function load() {
-    var fresh = { goals: { cal: 2200, pro: 150, caf: 400 }, foods: clone(STARTER), days: {}, seen: STARTER.map(function (f) { return f.id; }), v: 2 };
+  function fresh() {
+    return { goals: { cal: 2200, pro: 150, caf: 400 }, foods: clone(STARTER), days: {}, seen: STARTER.map(function (f) { return f.id; }), v: 2, ts: 0 };
+  }
+  function readLocal(key) {
+    try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+  function load() { return normalize(readLocal(KEY)); }
+  function normalize(s) {
     try {
-      var raw = localStorage.getItem(KEY);
-      if (!raw) return fresh;
-      var s = JSON.parse(raw);
-      if (!s || !Array.isArray(s.foods) || !s.goals || !s.days) return fresh;
+      if (!s || !Array.isArray(s.foods) || !s.goals || !s.days) return fresh();
       if (!s.goals.caf && s.goals.caf !== 0) s.goals.caf = 400;
       // Add starter foods introduced after this device last saved, without bringing back ones you deleted.
       var seen = s.seen || [];
@@ -281,9 +342,133 @@
         s.v = 2;
       }
       return s;
-    } catch (e) { return fresh; }
+    } catch (e) { return fresh(); }
   }
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function cacheLocal() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+  function save() {
+    state.ts = Date.now();
+    cacheLocal();
+    if (cloud && user) schedulePush();
+  }
+
+  // ---- Cloud sync (only active when CFG is filled in and someone is signed in) ----
+  function setSync(t) { var el = $('sync'); if (el) el.textContent = t; }
+  function schedulePush() {
+    setSync('Saving...');
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushNow, 700);
+  }
+  function pushNow() {
+    if (!cloud || !user) return Promise.resolve();
+    clearTimeout(pushTimer);
+    var retry = function () { setSync('Offline, will retry'); pushTimer = setTimeout(pushNow, 15000); };
+    return cloud.from('tracker_data')
+      .upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() })
+      .then(function (r) { if (r.error) retry(); else setSync('Saved'); }, retry);
+  }
+  // Resolves to true (replaced local state), false (kept local) or null (no cloud copy yet).
+  function pullCloud(initial) {
+    return cloud.from('tracker_data').select('data').eq('user_id', user.id).maybeSingle().then(function (r) {
+      if (r.error) { setSync('Offline'); return false; }
+      if (!r.data || !r.data.data) return null;
+      var remote = normalize(r.data.data);
+      if (initial || (remote.ts || 0) > (state.ts || 0)) { state = remote; cacheLocal(); return true; }
+      return false;
+    }, function () { setSync('Offline'); return false; });
+  }
+
+  function showAuth(mode, msg) {
+    authMode = mode || 'in';
+    $('auth').hidden = false; $('app').hidden = true;
+    var rec = authMode === 'recover';
+    $('emailRow').hidden = rec; $('aEmail').required = !rec;
+    $('aSignUp').hidden = rec; $('aReset').hidden = rec;
+    $('aPassLabel').textContent = rec ? 'New password' : 'Password';
+    $('aPass').setAttribute('autocomplete', rec ? 'new-password' : 'current-password');
+    $('aSubmit').textContent = rec ? 'Set new password' : 'Sign in';
+    $('authMsg').textContent = msg || (rec ? 'Choose a new password for your account.' : 'Sign in to see your foods and daily log on any device.');
+    $('aErr').textContent = '';
+  }
+  function hideAuth() { $('auth').hidden = true; $('app').hidden = false; }
+
+  function enterApp(user_) {
+    user = user_;
+    KEY = LEGACY + '-u-' + user.id;
+    $('who').textContent = user.email || 'Signed in';
+    $('acct').hidden = false; $('acctSec').hidden = false;
+    var cached = readLocal(KEY);
+    state = cached ? normalize(cached) : fresh();   // placeholder until the cloud answers
+    pullCloud(true).then(function (res) {
+      if (res === null) {                            // brand new account: nothing in the cloud yet
+        var legacy = readLocal(LEGACY);
+        state = cached ? normalize(cached) : fresh();
+        if (!cached && legacy) $('importBox').hidden = false;
+        save();
+      } else if (res === true) { setSync('Saved'); }
+      hideAuth(); render();
+    });
+  }
+
+  function initAuth() {
+    $('app').hidden = true;
+    cloud.auth.onAuthStateChange(function (ev, session) {
+      setTimeout(function () {
+        if (ev === 'PASSWORD_RECOVERY') { showAuth('recover'); return; }
+        if (session && session.user) {
+          if (authMode === 'recover') return;
+          if (!user || user.id !== session.user.id) enterApp(session.user);
+        } else if (ev === 'SIGNED_OUT' || ev === 'INITIAL_SESSION') {
+          user = null; showAuth('in');
+        }
+      }, 0);
+    });
+    var form = $('authForm');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var pass = $('aPass').value, email = $('aEmail').value.trim();
+      $('aErr').textContent = '';
+      if (authMode === 'recover') {
+        cloud.auth.updateUser({ password: pass }).then(function (r) {
+          if (r.error) { $('aErr').textContent = r.error.message; return; }
+          authMode = 'in'; cloud.auth.getSession().then(function (s) { if (s.data.session) enterApp(s.data.session.user); });
+        });
+        return;
+      }
+      cloud.auth.signInWithPassword({ email: email, password: pass }).then(function (r) {
+        if (r.error) $('aErr').textContent = r.error.message;
+      });
+    });
+    $('aSignUp').addEventListener('click', function () {
+      var email = $('aEmail').value.trim(), pass = $('aPass').value;
+      if (!email || pass.length < 8) { $('aErr').textContent = 'Enter your email and a password of at least 8 characters.'; return; }
+      cloud.auth.signUp({ email: email, password: pass, options: { emailRedirectTo: location.origin + location.pathname } }).then(function (r) {
+        if (r.error) { $('aErr').textContent = r.error.message; return; }
+        if (!r.data.session) $('authMsg').textContent = 'Check your email for a confirmation link, then come back and sign in.';
+      });
+    });
+    $('aReset').addEventListener('click', function () {
+      var email = $('aEmail').value.trim();
+      if (!email) { $('aErr').textContent = 'Enter your email first, then tap Forgot password.'; return; }
+      cloud.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }).then(function (r) {
+        if (r.error) $('aErr').textContent = r.error.message;
+        else $('authMsg').textContent = 'If that email has an account, a reset link is on its way.';
+      });
+    });
+    $('signOut').addEventListener('click', function () {
+      pushNow().then(function () { return cloud.auth.signOut(); }).then(function () {
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        user = null; KEY = LEGACY; state = fresh();
+        $('acct').hidden = true; $('acctSec').hidden = true;
+        $('aPass').value = ''; showAuth('in');
+      });
+    });
+    $('importYes').addEventListener('click', function () {
+      var legacy = readLocal(LEGACY);
+      if (legacy) { state = normalize(legacy); save(); }
+      $('importBox').hidden = true; render();
+    });
+    $('importNo').addEventListener('click', function () { $('importBox').hidden = true; });
+  }
 
   function todayKey() {
     var d = new Date();
@@ -555,9 +740,12 @@
   armed($('resetFoods'), 'Restore my foods', 'Tap again to restore', function () {
     state.foods = clone(STARTER); editingId = null; save(); render();
   });
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) render(); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    if (cloud && user) { pullCloud(false).then(function () { render(); }); } else if (!cloud) { render(); }
+  });
 
-  render();
+  if (cloud) initAuth(); else render();
 })();
 </script>
 </body>
