@@ -192,7 +192,12 @@
 
   /* Leaderboard */
   .bcard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 10px; }
-  .brow { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; }
+  .brow { display: grid; grid-template-columns: 24px 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; }
+  .av {
+    position: relative; width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: var(--surface-2);
+    display: grid; place-items: center; font-size: 0.82rem; font-weight: 700; color: var(--muted); letter-spacing: 0.02em;
+  }
+  .av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   .brow + .brow { border-top: 1px solid var(--line); }
   .brow.me { background: var(--win-bg); }
   .brow.stale { opacity: 0.55; }
@@ -1381,7 +1386,7 @@
     if (!cloud || !user || !state.share.on) return Promise.resolve();
     boardBusy = true; renderBoard();
     return pushBoard().then(function () {
-      return cloud.from('leaderboard').select('user_id,name,stats,updated_at');
+      return cloud.from('leaderboard').select('user_id,name,stats,updated_at,avatar_url');
     }).then(function (r) {
       boardBusy = false;
       if (r.error) boardMsg = 'Could not load the leaderboard. Tap Refresh to try again.';
@@ -1407,6 +1412,16 @@
 
   function meanOf(a) { return a.length ? Math.round(a.reduce(function (x, y) { return x + y; }, 0) / a.length) : null; }
   function pctText(v) { return v === null || v === undefined ? '&ndash;' : v + '%'; }
+
+  function initialsOf(name) {
+    var p = String(name).trim().split(/\s+/);
+    return ((p[0] || '').charAt(0) + (p.length > 1 ? p[p.length - 1].charAt(0) : '')).toUpperCase();
+  }
+  // A round photo when an https address is set for the person, otherwise their initials.
+  function avatarHTML(r) {
+    var url = r.avatar_url && /^https:\/\//i.test(r.avatar_url) ? r.avatar_url : '';
+    return '<span class="av" aria-hidden="true">' + esc(initialsOf(r.name)) + (url ? '<img src="' + esc(url) + '" alt="" loading="lazy">' : '') + '</span>';
+  }
 
   function renderBoard() {
     var panel = $('bJoin'), list = $('bList');
@@ -1435,7 +1450,8 @@
 
     var W = boardWin;
     var others = (boardRows || []).filter(function (r) { return r.user_id !== user.id; });
-    var mine = { user_id: user.id, name: sh.name, stats: computeStats(), updated_at: new Date().toISOString(), me: true };
+    var ownRow = (boardRows || []).filter(function (r) { return r.user_id === user.id; })[0];
+    var mine = { user_id: user.id, name: sh.name, stats: computeStats(), updated_at: new Date().toISOString(), me: true, avatar_url: ownRow ? ownRow.avatar_url : null };
     var all = others.concat([mine]);
     // Entries saved by an older version only carry the 60-day numbers, so fall back to those.
     var win = function (r) {
@@ -1464,7 +1480,7 @@
       }
       if (stale) bits.push('inactive ' + age + ' days');
       return '<div class="brow' + (r.me ? ' me' : '') + (stale ? ' stale' : '') + '"><span class="rank num">' + (label === null ? '&ndash;' : label) + '</span>' +
-        '<div><div class="bname">' + esc(r.name) + (r.me ? '<small>YOU</small>' : '') + '</div><div class="bsub num">' + bits.join(' &middot; ') + '</div>' +
+        avatarHTML(r) + '<div><div class="bname">' + esc(r.name) + (r.me ? '<small>YOU</small>' : '') + '</div><div class="bsub num">' + bits.join(' &middot; ') + '</div>' +
         '<div class="bar"><i style="width:' + (w.o || 0) + '%"></i></div></div>' +
         '<span class="bpct num">' + pctText(w.o) + '</span></div>';
     };
@@ -1501,6 +1517,8 @@
       (rows ? '<div class="bcard">' + rows + '</div>' : '') +
       (startRows ? '<div class="sec"><h2>Just getting started</h2></div><div class="bcard">' + startRows + '</div>' : '') +
       '<div class="sec"><h2>By habit, last ' + W + ' days</h2></div><div class="bcard">' + hab + '</div>';
+    // If a photo address does not load, drop the image so the initials show instead.
+    [].forEach.call(list.querySelectorAll('.av img'), function (img) { img.addEventListener('error', function () { img.remove(); }); });
   }
 
   if (cloud) { route(); initAuth(); } else route();
