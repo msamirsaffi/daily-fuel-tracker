@@ -171,6 +171,25 @@
   .empty { color: var(--muted); font-size: 0.9rem; padding: 12px 14px; }
   .foot { margin-top: 20px; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
   .note { color: var(--muted); font-size: 0.78rem; margin-top: 14px; }
+  /* Ocean color scheme: blue accent, cool backgrounds, coral for misses */
+  :root[data-palette="ocean"] {
+    --bg: #eef4f8; --surface: #ffffff; --surface-2: #e0eaf1; --fg: #10202b; --muted: #566b7a; --line: #cbd9e3;
+    --accent: #0b6fb8; --accent-fg: #ffffff; --protein: #0f8b8d; --fat: #b7791f; --carb: #7a5bd0; --caf: #8a5a2b;
+    --water: #14a3c7; --warn: #d9442b; --warn-bg: #fde9e4; --win-bg: #dcecf9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-palette="ocean"]:not([data-theme="light"]) {
+      --bg: #0b1620; --surface: #13232f; --surface-2: #1b3140; --fg: #e6f0f7; --muted: #8fa7b8; --line: #25404f;
+      --accent: #4fb0f0; --accent-fg: #06202f; --protein: #4fd1c5; --fat: #e3a95a; --carb: #b9a1f0; --caf: #d4a06a;
+      --water: #6fd3ee; --warn: #ff8a6b; --warn-bg: #3a1f1a; --win-bg: #12324a; color-scheme: dark;
+    }
+  }
+  :root[data-palette="ocean"][data-theme="dark"] {
+    --bg: #0b1620; --surface: #13232f; --surface-2: #1b3140; --fg: #e6f0f7; --muted: #8fa7b8; --line: #25404f;
+    --accent: #4fb0f0; --accent-fg: #06202f; --protein: #4fd1c5; --fat: #e3a95a; --carb: #b9a1f0; --caf: #d4a06a;
+    --water: #6fd3ee; --warn: #ff8a6b; --warn-bg: #3a1f1a; --win-bg: #12324a; color-scheme: dark;
+  }
+
   /* Bottom tab bar */
   .tabs {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; background: var(--surface); border-top: 1px solid var(--line);
@@ -375,6 +394,16 @@
     <p class="hint" style="margin:10px 0 0">Fat and carb targets follow from calories and protein: fat is set to 30% of calories, and carbs fill what remains after protein and fat. The default caffeine limit is 400 mg, the usual guideline for healthy adults.</p>
   </div>
 
+  <div class="sec"><h2>Appearance</h2></div>
+  <div class="panel">
+    <div class="hrow"><span class="vlabel">Colors</span>
+      <div class="seg" role="group" aria-label="Color scheme">
+        <button type="button" class="palbtn" data-palette="forest">Forest</button>
+        <button type="button" class="palbtn" data-palette="ocean">Ocean</button>
+      </div>
+    </div>
+  </div>
+
   <div class="sec"><h2>Recent days</h2></div>
   <ul class="hist" id="hist"></ul>
 
@@ -414,6 +443,14 @@
     <p class="hint" id="hHint" style="margin:10px 0 0"></p>
   </div>
   <div id="habList"></div>
+  <div class="panel" style="margin-top:10px">
+    <div class="hrow"><span class="vlabel">Colors</span>
+      <div class="seg" role="group" aria-label="Color scheme">
+        <button type="button" class="palbtn" data-palette="forest">Forest</button>
+        <button type="button" class="palbtn" data-palette="ocean">Ocean</button>
+      </div>
+    </div>
+  </div>
   <p class="note">Water, calories and protein use the goals on the Food page. Weeks run Monday to Sunday, and the strength workout needs 5 a week, so up to 2 missed days in a week do not count against the streak.</p>
 </section>
 
@@ -472,7 +509,7 @@
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function fresh() {
-    return { goals: { cal: 2200, pro: 150, caf: 400, water: 128 }, foods: clone(STARTER), days: {}, seen: STARTER.map(function (f) { return f.id; }), v: 3, ts: 0, habits: { start: todayKey(), checks: {} } };
+    return { goals: { cal: 2200, pro: 150, caf: 400, water: 128 }, foods: clone(STARTER), days: {}, seen: STARTER.map(function (f) { return f.id; }), v: 3, ts: 0, palette: 'forest', habits: { start: todayKey(), checks: {} } };
   }
   function readLocal(key) {
     try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
@@ -504,6 +541,7 @@
       if (!s.habits || typeof s.habits !== 'object') s.habits = { start: todayKey(), checks: {} };
       if (!s.habits.checks) s.habits.checks = {};
       if (!s.habits.start) s.habits.start = todayKey();
+      if (s.palette !== 'ocean' && s.palette !== 'forest') s.palette = 'forest';
       if (s.v < 3) {
         if (s.goals.water === 100) s.goals.water = 128;
         s.v = 3;
@@ -702,7 +740,15 @@
     return { n: n, g: grams };
   }
 
+  function applyPalette() {
+    document.documentElement.setAttribute('data-palette', state.palette || 'forest');
+    [].forEach.call(document.querySelectorAll('.palbtn'), function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-palette') === (state.palette || 'forest') ? 'true' : 'false');
+    });
+  }
+
   function render() {
+    applyPalette();
     var d = new Date();
     $('date').textContent = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     renderMeters();
@@ -828,6 +874,8 @@
   }
 
   document.addEventListener('click', function (e) {
+    var pb = e.target.closest('.palbtn');
+    if (pb) { state.palette = pb.getAttribute('data-palette'); save(); applyPalette(); return; }
     var b = e.target.closest('[data-act]');
     if (!b) return;
     var act = b.getAttribute('data-act'), id = b.getAttribute('data-id');
