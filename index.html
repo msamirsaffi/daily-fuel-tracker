@@ -322,6 +322,9 @@
   .hc.loss.auto::after { background: var(--warn); }
   .cell.rest { background: var(--surface-2); border-color: var(--muted); color: var(--fg); }
   .trow.rest .box { background: var(--surface-2); border-color: var(--muted); }
+  .tgl { display: flex; align-items: center; gap: 12px; min-height: 46px; border-top: 1px solid var(--line); font-size: 0.92rem; }
+  .tgl:first-of-type { border-top: 0; }
+  .tgl input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); flex: 0 0 auto; }
   .sw.rest { background: var(--surface-2); border-color: var(--muted); border-radius: 50%; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -475,6 +478,7 @@
     <p class="hint" id="hHint" style="margin:10px 0 0"></p>
   </div>
   <div id="habList"></div>
+  <div class="panel" id="habToggles" style="margin-top:10px"></div>
   <div class="panel" style="margin-top:10px">
     <div class="hrow"><span class="vlabel">Colors</span>
       <div class="seg" role="group" aria-label="Color scheme">
@@ -493,7 +497,7 @@
   </div>
   <div class="panel" id="bJoin"></div>
   <div id="bList"></div>
-  <p class="note">Rankings use each person's completed days in the window you pick, counting only days they have tracked. People with fewer than 7 tracked days are listed separately. A perfect day means all 9 habits were done, with a rest day counting for strength. Numbers refresh whenever someone opens or saves the site.</p>
+  <p class="note">Rankings use each person's completed days in the window you pick, counting only days they have tracked. People with fewer than 7 tracked days are listed separately. A perfect day means all of a person's active habits were done, with a rest day counting for strength, and people can turn off habits that don't apply to them. Numbers refresh whenever someone opens or saves the site.</p>
 </section>
 
 <nav class="tabs" aria-label="Pages">
@@ -583,6 +587,7 @@
       // Version 3: habits data, and the default water goal moves from 100 to 128 oz.
       if (!s.habits || typeof s.habits !== 'object') s.habits = { start: todayKey(), checks: {} };
       if (!s.habits.checks) s.habits.checks = {};
+      if (!s.habits.off || typeof s.habits.off !== 'object') s.habits.off = {};
       if (!s.habits.start) s.habits.start = todayKey();
       if (!s.share || typeof s.share !== 'object') s.share = { on: false, name: '' };
       if (s.palette !== 'ocean' && s.palette !== 'forest') s.palette = 'ocean';
@@ -1034,6 +1039,11 @@
     { id: 'readnf',   name: 'Read 10 pages of non-fiction', rule: 'Every day' },
     { id: 'readfic',  name: 'Read 10 pages of fiction',     rule: 'Every day' }
   ];
+  // Habits the person has turned off are left out of their lists, totals, streaks and leaderboard numbers.
+  function activeHabits() {
+    var off = (state.habits && state.habits.off) || {};
+    return HABITS.filter(function (h) { return !off[h.id]; });
+  }
   var STATE_WORDS = { win: 'done', loss: 'missed', rest: 'rest day', skip: 'excused miss', pending: 'not done yet', untracked: 'before tracking started' };
   var habScrolled = false;
 
@@ -1148,7 +1158,7 @@
 
   function todayRowsHTML(today, start) {
     var t = dayTotals(today), g = state.goals;
-    return HABITS.map(function (h) {
+    return activeHabits().map(function (h) {
       var lab = habitLabel(h), st = stateOf(h, today, today, start, {}), note = '';
       if (h.id === 'water') note = Math.round(t.water) + ' of ' + g.water + ' oz';
       else if (h.id === 'protein') note = g1(t.pro) + ' of ' + g.pro + ' g';
@@ -1231,15 +1241,20 @@
     keys.push(today);
     var prev = [].map.call(host.querySelectorAll('.strip'), function (s) { return s.scrollLeft; });
     var wins = 0;
-    HABITS.forEach(function (h) { if (stateOf(h, today, today, hs.start, {}) === 'win') wins++; });
+    activeHabits().forEach(function (h) { if (stateOf(h, today, today, hs.start, {}) === 'win') wins++; });
     $('hDate').textContent = parseKey(today).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-    $('hToday').textContent = 'Today: ' + wins + ' of ' + HABITS.length + ' done';
+    $('hToday').textContent = 'Today: ' + wins + ' of ' + activeHabits().length + ' done';
     $('hStart').value = hs.start; $('hStart').max = today;
     $('todayList').innerHTML = todayRowsHTML(today, hs.start);
     $('hHint').textContent = 'Each row shows yesterday and the 59 days before it, plus today on the right, with a small gap between weeks. Swipe a row sideways to see older days. ' +
       'Tap any day to mark it done or not done. For the strength workout, tap once for done, a second time for a logged rest day, and a third time to clear it. ' +
       'W is your current win streak and L is your current loss streak, in days. Days before the tracking date do not count. A dot in a box means it was filled in from your food log.';
-    host.innerHTML = HABITS.map(function (h) { return habitHTML(h, today, keys, hs.start); }).join('');
+    host.innerHTML = activeHabits().map(function (h) { return habitHTML(h, today, keys, hs.start); }).join('');
+    $('habToggles').innerHTML = '<h3>Your habits</h3>' +
+      '<p class="hint">Turn off a habit you are not doing. It leaves your lists and stops counting toward your totals, streaks and leaderboard numbers. Your past entries are kept if you turn it back on.</p>' +
+      HABITS.map(function (h) {
+        return '<label class="tgl"><input type="checkbox" data-htoggle="' + h.id + '"' + (hs.off[h.id] ? '' : ' checked') + '><span>' + esc(habitLabel(h).name) + '</span></label>';
+      }).join('');
     [].forEach.call(host.querySelectorAll('.strip'), function (s, n) {
       s.scrollLeft = (habScrolled && prev[n] !== undefined) ? prev[n] : s.scrollWidth;
     });
@@ -1293,6 +1308,14 @@
       location.hash = p;
     });
   });
+  document.addEventListener('change', function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute('data-htoggle');
+    if (!id) return;
+    var off = state.habits.off;
+    if (!e.target.checked && activeHabits().length <= 1) { e.target.checked = true; return; }   // keep at least one habit on
+    if (e.target.checked) delete off[id]; else off[id] = true;
+    save(); renderHabits();
+  });
   $('hStart').addEventListener('change', function (e) {
     var v = e.target.value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || v > todayKey()) { renderHabits(); return; }
@@ -1329,7 +1352,8 @@
   // Numbers for the last N completed days (ending yesterday): overall %, perfect days, days tracked, and each habit's %.
   function windowStats(N, today, start) {
     var hp = {}, sum = 0, cnt = 0, perfect = 0, tracked = 0, i, k, wc = {};
-    HABITS.forEach(function (h) {
+    var active = activeHabits();
+    active.forEach(function (h) {
       var done = 0, tr = 0, j, kk;
       for (j = 1; j <= N; j++) {
         kk = addDays(today, -j);
@@ -1346,7 +1370,7 @@
       k = addDays(today, -i);
       if (k < start) continue;
       tracked++;
-      var ok = HABITS.every(function (h) {
+      var ok = active.every(function (h) {
         wc[h.id] = wc[h.id] || {};
         var s = stateOf(h, k, today, start, wc[h.id]);
         return s === 'win' || (h.weekly && (s === 'rest' || s === 'skip'));
@@ -1359,7 +1383,7 @@
     var today = todayKey(), start = state.habits.start;
     if (start > today) start = today;
     var hs = {}, sum = 0, cnt = 0, sumM = 0, cntM = 0, wins = 0, days = 0;
-    HABITS.forEach(function (h) {
+    activeHabits().forEach(function (h) {
       var s = habitStats(h, today, start);
       hs[h.id] = { p: s.p60, m: s.pm, s: s.s, n: s.n };
       if (s.p60 !== null) { sum += s.p60; cnt++; }
@@ -1368,7 +1392,7 @@
       days = Math.max(days, s.tracked);
     });
     return {
-      v: 2, overall: cnt ? Math.round(sum / cnt) : null, month: cntM ? Math.round(sumM / cntM) : null, today: wins, days: days, h: hs,
+      v: 2, overall: cnt ? Math.round(sum / cnt) : null, month: cntM ? Math.round(sumM / cntM) : null, today: wins, n: activeHabits().length, days: days, h: hs,
       w: { '7': windowStats(7, today, start), '30': windowStats(30, today, start), '60': windowStats(60, today, start) }
     };
   }
@@ -1476,7 +1500,7 @@
       else {
         if (best) bits.push('W' + best.n + ' ' + esc(SHORT[best.id] || ''));
         if (w.perfect !== null && w.perfect !== undefined) bits.push(w.perfect + ' perfect ' + (w.perfect === 1 ? 'day' : 'days'));
-        if (st.today !== undefined) bits.push('today ' + st.today + '/' + HABITS.length);
+        if (st.today !== undefined) bits.push('today ' + st.today + '/' + (st.n || HABITS.length));
       }
       if (stale) bits.push('inactive ' + age + ' days');
       return '<div class="brow' + (r.me ? ' me' : '') + (stale ? ' stale' : '') + '"><span class="rank num">' + (label === null ? '&ndash;' : label) + '</span>' +
@@ -1493,7 +1517,7 @@
     else if (idx === 0) gap = 'You are #1 so far. Others will appear as they reach 7 tracked days.';
     else gap = 'Track 7 days to join the ranking. You have ' + (mine.stats.days || 0) + ' so far.';
 
-    var hab = HABITS.map(function (h) {
+    var hab = activeHabits().map(function (h) {
       var vals = all.filter(function (r) { return r.me || (r.stats && r.stats.days >= 7); }).map(function (r) { var v = win(r).h[h.id]; return { name: r.name, me: !!r.me, v: v === undefined ? null : v }; })
         .filter(function (x) { return x.v !== null; });
       var me = win(mine).h[h.id];
