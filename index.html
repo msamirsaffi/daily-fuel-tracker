@@ -248,21 +248,28 @@
 
   /* Heatmap grid: one column per week, Monday at the top */
   .heat {
-    display: grid; grid-auto-flow: column; grid-template-rows: 14px repeat(7, auto);
+    display: grid; grid-auto-flow: column; grid-template-rows: 14px repeat(7, auto) 12px;
     grid-template-columns: 14px repeat(var(--cols), minmax(0, 1fr)); gap: 3px; padding: 10px 14px 6px 0;
   }
   .heat .hl { font-size: 0.62rem; color: var(--muted); display: grid; place-items: center; }
   .heat .hm { font-size: 0.62rem; font-weight: 700; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
-  .hc {
-    position: relative; aspect-ratio: 1; width: 100%; min-width: 0; padding: 0; border-radius: 7px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--muted); font-size: 0.68rem; font-weight: 600; display: grid; place-items: center;
-  }
-  .hc.win { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-  .hc.loss { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
-  .hc.skip { background: transparent; border-style: dashed; }
-  .hc.untracked { background: transparent; opacity: 0.4; }
-  .hc.today { outline: 2px solid var(--fg); outline-offset: 1px; z-index: 1; }
-  .hc.auto::after { content: ""; position: absolute; top: 2px; right: 2px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0.6; }
+  .heat .hd { font-size: 0.6rem; color: var(--muted); text-align: center; }
+  /* Each day is a round dot inside a larger tap area */
+  .hc { position: relative; width: 100%; aspect-ratio: 1; min-width: 0; padding: 0; border: 0; background: transparent; display: grid; place-items: center; }
+  .hc::before { content: ""; box-sizing: border-box; width: 72%; aspect-ratio: 1; border-radius: 50%; border: 1.5px solid var(--line); background: var(--bg); }
+  .hc.win::before { background: var(--accent); border-color: var(--accent); }
+  .hc.loss::before { background: var(--warn-bg); border-color: var(--warn); }
+  .hc.rest::before { background: var(--surface-2); border-color: var(--muted); }
+  .hc.skip::before { background: transparent; border-style: dashed; border-color: var(--muted); }
+  .hc.untracked { opacity: 0.35; }
+  .hc.untracked::before { background: transparent; }
+  .hc.today::before { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--fg); }
+  .hc.auto::after { content: ""; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+  .hc.win.auto::after { background: var(--accent-fg); }
+  .hc.loss.auto::after { background: var(--warn); }
+  .cell.rest { background: var(--surface-2); border-color: var(--muted); color: var(--fg); }
+  .trow.rest .box { background: var(--surface-2); border-color: var(--muted); }
+  .sw.rest { background: var(--surface-2); border-color: var(--muted); border-radius: 50%; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -394,7 +401,8 @@
     <div class="legend" aria-hidden="true">
       <span><i class="sw win"></i>Done</span>
       <span><i class="sw loss"></i>Missed</span>
-      <span><i class="sw skip"></i>Rest day</span>
+      <span><i class="sw rest"></i>Logged rest day</span>
+      <span><i class="sw skip"></i>Excused miss</span>
       <span><i class="sw pending"></i>Not done yet</span>
     </div>
     <div class="hrow">
@@ -921,7 +929,7 @@
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var HABITS = [
     { id: 'stretch',  name: 'Morning stretch',              rule: 'Every day' },
-    { id: 'strength', name: '45-minute strength workout',   rule: '5 per week, so 2 missed days a week are fine', weekly: 5 },
+    { id: 'strength', name: '45-minute strength workout',   rule: '5 per week. Tap twice to log a rest day', weekly: 5 },
     { id: 'water',    auto: true },
     { id: 'calories', auto: true },
     { id: 'protein',  auto: true },
@@ -930,7 +938,7 @@
     { id: 'readnf',   name: 'Read 10 pages of non-fiction', rule: 'Every day' },
     { id: 'readfic',  name: 'Read 10 pages of fiction',     rule: 'Every day' }
   ];
-  var STATE_WORDS = { win: 'done', loss: 'missed', skip: 'rest day', pending: 'not done yet', untracked: 'before tracking started' };
+  var STATE_WORDS = { win: 'done', loss: 'missed', rest: 'rest day', skip: 'excused miss', pending: 'not done yet', untracked: 'before tracking started' };
   var habScrolled = false;
   var habView = 'grid';
   try { if (localStorage.getItem('fuel-habit-view') === 'strip') habView = 'strip'; } catch (e) {}
@@ -965,6 +973,7 @@
   }
   function isDone(h, k) {
     var m = manualVal(k, h.id);
+    if (m === 'rest') return false;
     if (m !== undefined) return !!m;
     return h.auto ? autoDone(h.id, k) : false;
   }
@@ -974,6 +983,7 @@
       d = addDays(wk, i);
       if (d < start || d > today) unknown++;
       else if (isDone(h, d)) done++;
+      else if (manualVal(d, h.id) === 'rest') continue;
       else if (d === today) unknown++;
     }
     return done + unknown >= h.weekly;
@@ -981,6 +991,7 @@
   // win, loss, skip (excused miss), pending (today, not done yet) or untracked.
   function stateOf(h, k, today, start, wcache) {
     if (k < start) return 'untracked';
+    if (manualVal(k, h.id) === 'rest') return 'rest';
     // Calories can only be judged once the day is over, so today stays pending unless it is already over the goal.
     if (k === today && h.id === 'calories' && manualVal(k, h.id) === undefined) {
       return (entries(k).length && dayTotals(k).cal > state.goals.cal) ? 'loss' : 'pending';
@@ -1014,6 +1025,7 @@
     var cols = Math.floor(daysBetween(w0, today) / 7) + 1;
     var out = '<div class="heat" style="--cols:' + cols + '"><span></span>', r, c, k, d, st, au, mo, when;
     'MTWTFSS'.split('').forEach(function (l) { out += '<span class="hl">' + l + '</span>'; });
+    out += '<span></span>';
     for (c = 0; c < cols; c++) {
       mo = '';
       for (r = 0; r < 7; r++) {
@@ -1033,8 +1045,9 @@
         when = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
         out += '<button type="button" class="hc ' + st + (au ? ' auto' : '') + (k === today ? ' today' : '') +
           '" data-act="hab" data-id="' + h.id + '" data-day="' + k + '" aria-label="' + esc(lab.name) + ', ' + esc(when) + ': ' +
-          STATE_WORDS[st] + '. Tap to change.">' + d.getDate() + '</button>';
+          STATE_WORDS[st] + '. Tap to change."></button>';
       }
+      out += '<span class="hd num">' + parseKey(addDays(w0, 7 * c)).getDate() + '</span>';
     }
     return out + '</div>';
   }
@@ -1047,9 +1060,11 @@
       else if (h.id === 'protein') note = g1(t.pro) + ' of ' + g.pro + ' g';
       else if (h.id === 'calories') note = Math.round(t.cal).toLocaleString() + ' of ' + Math.round(g.cal).toLocaleString() + ' cal' + (st === 'pending' ? ', checked at day end' : '');
       else if (st === 'win') note = 'Done';
+      else if (st === 'rest') note = 'Rest day';
+      else if (h.weekly) note = 'Tap twice for rest day';
       return '<button type="button" class="trow ' + st + '" data-act="hab" data-id="' + h.id + '" data-day="' + today + '" aria-label="' +
         esc(lab.name) + ': ' + STATE_WORDS[st] + '. Tap to change.">' +
-        '<span class="box">' + (st === 'win' ? '&#10003;' : st === 'loss' ? '&times;' : '') + '</span>' +
+        '<span class="box">' + (st === 'win' ? '&#10003;' : st === 'loss' ? '&times;' : st === 'rest' ? 'R' : '') + '</span>' +
         '<span class="tname">' + esc(lab.name) + '</span><span class="tnote num">' + esc(note) + '</span></button>';
     }).join('');
   }
@@ -1066,7 +1081,7 @@
     var cells = keys.map(function (k) {
       var st = stateOf(h, k, today, start, wc), d = parseKey(k), isToday = k === today;
       var au = h.auto && manualVal(k, h.id) === undefined && st !== 'untracked';
-      var sym = st === 'win' ? '&#10003;' : st === 'loss' ? '&times;' : st === 'skip' ? '&ndash;' : '';
+      var sym = st === 'win' ? '&#10003;' : st === 'loss' ? '&times;' : st === 'skip' ? '&ndash;' : st === 'rest' ? 'R' : '';
       var mo = (d.getDate() === 1 || k === keys[0]) ? MONTHS[d.getMonth()] : '';
       var when = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
       return '<div class="dcol' + (isToday ? ' today' : '') + '"><span class="mo">' + mo + '</span>' +
@@ -1131,7 +1146,7 @@
     $('hHint').textContent = (habView === 'grid'
       ? 'Each grid shows yesterday and the 59 days before it, plus today, with one column per week and Monday at the top. '
       : 'Each row shows yesterday and the 59 days before it, plus today on the right. Swipe a row sideways to see older days. ') +
-      'Tap any day to mark it done or not done. Days before the tracking date do not count. A dot in a box means it was filled in from your food log.';
+      'Tap any day to mark it done or not done. For the strength workout, tap once for done, a second time for a logged rest day, and a third time to clear it. Days before the tracking date do not count. A dot in a box means it was filled in from your food log.';
     host.innerHTML = HABITS.map(function (h) { return habitHTML(h, today, keys, hs.start); }).join('');
     [].forEach.call(host.querySelectorAll('.strip'), function (s, n) {
       s.scrollLeft = (habScrolled && prev[n] !== undefined) ? prev[n] : s.scrollWidth;
@@ -1148,6 +1163,13 @@
     if (h.auto) {
       var keepExplicit = h.id === 'calories' && k === today;
       if (!keepExplicit && nv === autoDone(id, k)) delete hs.checks[k][id]; else hs.checks[k][id] = nv;
+    }
+    else if (h.weekly) {
+      // Strength cycles through done, logged rest day, then cleared.
+      var cur = hs.checks[k][id];
+      if (cur === true) hs.checks[k][id] = 'rest';
+      else if (cur === 'rest') delete hs.checks[k][id];
+      else hs.checks[k][id] = true;
     }
     else if (nv) hs.checks[k][id] = true;
     else delete hs.checks[k][id];
