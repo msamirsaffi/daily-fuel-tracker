@@ -214,6 +214,7 @@
   .bform { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 8px; }
   .bform > div { flex: 1 1 160px; }
   .bform input { margin-top: 4px; }
+  .seg .bwbtn { padding: 0 10px; font-size: 0.82rem; }
   .bmsg { color: var(--warn); font-size: 0.82rem; font-weight: 600; margin: 8px 0 0; }
 
   /* Bottom tab bar */
@@ -487,7 +488,7 @@
   </div>
   <div class="panel" id="bJoin"></div>
   <div id="bList"></div>
-  <p class="note">Rankings use each person's last 60 days of habits, counting only days they have tracked. They refresh whenever someone opens or saves the site.</p>
+  <p class="note">Rankings use each person's completed days in the window you pick, counting only days they have tracked. People with fewer than 7 tracked days are listed separately. A perfect day means all 9 habits were done, with a rest day counting for strength. Numbers refresh whenever someone opens or saves the site.</p>
 </section>
 
 <nav class="tabs" aria-label="Pages">
@@ -916,6 +917,8 @@
   }
 
   document.addEventListener('click', function (e) {
+    var wb = e.target.closest('.bwbtn');
+    if (wb) { boardWin = wb.getAttribute('data-bwin'); renderBoard(); return; }
     var pb = e.target.closest('.palbtn');
     if (pb) { state.palette = pb.getAttribute('data-palette'); save(); applyPalette(); return; }
     var b = e.target.closest('[data-act]');
@@ -1292,7 +1295,7 @@
   });
 
   // ---- Leaderboard (opt-in; shares only a display name and habit summary numbers) ----
-  var boardRows = null, boardMsg = '', boardBusy = false;
+  var boardRows = null, boardMsg = '', boardBusy = false, boardWin = '7';
   var SHORT = { stretch: 'Stretch', strength: 'Strength', water: 'Water', calories: 'Calories', protein: 'Protein', supps: 'Supplements', walk: 'Walk', readnf: 'Non-fiction', readfic: 'Fiction' };
 
   function habitStats(h, today, start) {
@@ -1318,6 +1321,35 @@
       s: sk ? (sk.type === 'win' ? 'W' : 'L') : '', n: sk ? sk.n : 0, tracked: tracked60
     };
   }
+  // Numbers for the last N completed days (ending yesterday): overall %, perfect days, days tracked, and each habit's %.
+  function windowStats(N, today, start) {
+    var hp = {}, sum = 0, cnt = 0, perfect = 0, tracked = 0, i, k, wc = {};
+    HABITS.forEach(function (h) {
+      var done = 0, tr = 0, j, kk;
+      for (j = 1; j <= N; j++) {
+        kk = addDays(today, -j);
+        if (kk < start) continue;
+        tr++;
+        if (isDone(h, kk)) done++;
+      }
+      var target = h.weekly ? Math.round(tr * h.weekly / 7) : tr;
+      var p = target > 0 ? Math.min(100, Math.round(done / target * 100)) : null;
+      hp[h.id] = p;
+      if (p !== null) { sum += p; cnt++; }
+    });
+    for (i = 1; i <= N; i++) {
+      k = addDays(today, -i);
+      if (k < start) continue;
+      tracked++;
+      var ok = HABITS.every(function (h) {
+        wc[h.id] = wc[h.id] || {};
+        var s = stateOf(h, k, today, start, wc[h.id]);
+        return s === 'win' || (h.weekly && (s === 'rest' || s === 'skip'));
+      });
+      if (ok) perfect++;
+    }
+    return { o: cnt ? Math.round(sum / cnt) : null, perfect: perfect, tracked: tracked, h: hp };
+  }
   function computeStats() {
     var today = todayKey(), start = state.habits.start;
     if (start > today) start = today;
@@ -1330,7 +1362,10 @@
       if (stateOf(h, today, today, start, {}) === 'win') wins++;
       days = Math.max(days, s.tracked);
     });
-    return { v: 1, overall: cnt ? Math.round(sum / cnt) : null, month: cntM ? Math.round(sumM / cntM) : null, today: wins, days: days, h: hs };
+    return {
+      v: 2, overall: cnt ? Math.round(sum / cnt) : null, month: cntM ? Math.round(sumM / cntM) : null, today: wins, days: days, h: hs,
+      w: { '7': windowStats(7, today, start), '30': windowStats(30, today, start), '60': windowStats(60, today, start) }
+    };
   }
 
   function pushBoard() {
@@ -1398,38 +1433,74 @@
         (boardMsg ? '<p class="bmsg" role="alert">' + esc(boardMsg) + '</p>' : '');
     }
 
+    var W = boardWin;
     var others = (boardRows || []).filter(function (r) { return r.user_id !== user.id; });
     var mine = { user_id: user.id, name: sh.name, stats: computeStats(), updated_at: new Date().toISOString(), me: true };
     var all = others.concat([mine]);
+    // Entries saved by an older version only carry the 60-day numbers, so fall back to those.
+    var win = function (r) {
+      var s = r.stats || {}, o = {}, k;
+      if (s.w && s.w[W]) return s.w[W];
+      if (W === '60') for (k in (s.h || {})) o[k] = s.h[k] ? s.h[k].p : null;
+      return { o: W === '60' && s.overall !== undefined ? s.overall : null, perfect: null, tracked: null, h: o };
+    };
     var num = function (v) { return v === null || v === undefined ? -1 : v; };
-    all.sort(function (a, b) {
-      return num(b.stats.overall) - num(a.stats.overall) || num(b.stats.month) - num(a.stats.month) || String(a.name).localeCompare(String(b.name));
-    });
+    var byName = function (a, b) { return String(a.name).localeCompare(String(b.name)); };
+    var ranked = [], starting = [];
+    all.forEach(function (r) { ((r.stats && r.stats.days >= 7) ? ranked : starting).push(r); });
+    ranked.sort(function (a, b) { return num(win(b).o) - num(win(a).o) || num(win(b).perfect) - num(win(a).perfect) || byName(a, b); });
+    starting.sort(byName);
 
-    var rows = all.map(function (r, i) {
-      var st = r.stats || {}, best = null, id;
-      for (id in (st.h || {})) { var x = st.h[id]; if (x && x.s === 'W' && (!best || x.n > best.n)) best = { id: id, n: x.n }; }
+    var rowHTML = function (r, label) {
+      var st = r.stats || {}, w = win(r), best = null, id, x, bits = [];
+      for (id in (st.h || {})) { x = st.h[id]; if (x && x.s === 'W' && (!best || x.n > best.n)) best = { id: id, n: x.n }; }
       var age = Math.floor((Date.now() - Date.parse(r.updated_at)) / 86400000);
       var stale = !r.me && age >= 7;
-      var sub = 'Month ' + pctText(st.month) + (best ? ' &middot; best streak W' + best.n + ' ' + esc(SHORT[best.id] || '') : '') + (stale ? ' &middot; inactive ' + age + ' days' : '');
-      return '<div class="brow' + (r.me ? ' me' : '') + (stale ? ' stale' : '') + '"><span class="rank num">' + (i + 1) + '</span>' +
-        '<div><div class="bname">' + esc(r.name) + (r.me ? '<small>YOU</small>' : '') + '</div><div class="bsub num">' + sub + '</div>' +
-        '<div class="bar"><i style="width:' + (st.overall || 0) + '%"></i></div></div>' +
-        '<span class="bpct num">' + pctText(st.overall) + '</span></div>';
-    }).join('');
+      if (label === null) bits.push('Tracked ' + (st.days || 0) + ' of 7 days needed');
+      else {
+        if (best) bits.push('W' + best.n + ' ' + esc(SHORT[best.id] || ''));
+        if (w.perfect !== null && w.perfect !== undefined) bits.push(w.perfect + ' perfect ' + (w.perfect === 1 ? 'day' : 'days'));
+        if (st.today !== undefined) bits.push('today ' + st.today + '/' + HABITS.length);
+      }
+      if (stale) bits.push('inactive ' + age + ' days');
+      return '<div class="brow' + (r.me ? ' me' : '') + (stale ? ' stale' : '') + '"><span class="rank num">' + (label === null ? '&ndash;' : label) + '</span>' +
+        '<div><div class="bname">' + esc(r.name) + (r.me ? '<small>YOU</small>' : '') + '</div><div class="bsub num">' + bits.join(' &middot; ') + '</div>' +
+        '<div class="bar"><i style="width:' + (w.o || 0) + '%"></i></div></div>' +
+        '<span class="bpct num">' + pctText(w.o) + '</span></div>';
+    };
+    var rows = ranked.map(function (r, i) { return rowHTML(r, i + 1); }).join('');
+    var startRows = starting.map(function (r) { return rowHTML(r, null); }).join('');
+
+    var idx = ranked.indexOf(mine), gap;
+    if (idx > 0) gap = 'You are #' + (idx + 1) + ', ' + (num(win(ranked[idx - 1]).o) - num(win(mine).o)) + '% behind ' + esc(ranked[idx - 1].name) + '.';
+    else if (idx === 0 && ranked.length > 1) gap = 'You are #1, ' + (num(win(mine).o) - num(win(ranked[1]).o)) + '% ahead of ' + esc(ranked[1].name) + '.';
+    else if (idx === 0) gap = 'You are #1 so far. Others will appear as they reach 7 tracked days.';
+    else gap = 'Track 7 days to join the ranking. You have ' + (mine.stats.days || 0) + ' so far.';
 
     var hab = HABITS.map(function (h) {
-      var vals = all.map(function (r) { var x = r.stats && r.stats.h && r.stats.h[h.id]; return x ? x.p : null; }).filter(function (v) { return v !== null; });
-      var me = mine.stats.h[h.id].p, avg = meanOf(vals);
-      var rank = me === null ? null : 1 + vals.filter(function (v) { return v > me; }).length;
+      var vals = all.filter(function (r) { return r.me || (r.stats && r.stats.days >= 7); }).map(function (r) { var v = win(r).h[h.id]; return { name: r.name, me: !!r.me, v: v === undefined ? null : v }; })
+        .filter(function (x) { return x.v !== null; });
+      var me = win(mine).h[h.id];
+      me = me === undefined ? null : me;
+      var avg = meanOf(vals.map(function (x) { return x.v; }));
+      var rank = me === null ? null : 1 + vals.filter(function (x) { return x.v > me; }).length;
+      var lead = vals.slice().sort(function (a, b) { return b.v - a.v; })[0];
+      var leadTxt = !lead ? '' : (lead.me || (me !== null && me >= lead.v)) ? 'You lead' : 'Leader: ' + esc(lead.name) + ' ' + lead.v + '%';
       return '<div class="bh"><div class="bh-top"><b>' + esc(habitLabel(h).name) + '</b><span class="num">' + (rank ? 'Rank ' + rank + ' of ' + vals.length : 'No data yet') + '</span></div>' +
+        (leadTxt ? '<div class="bsub">' + leadTxt + '</div>' : '') +
         '<div class="bh-row"><span>You</span><div class="bar"><i style="width:' + (me || 0) + '%"></i></div><b class="num">' + pctText(me) + '</b></div>' +
         '<div class="bh-row"><span>Group avg</span><div class="bar"><i class="avg" style="width:' + (avg || 0) + '%"></i></div><b class="num">' + pctText(avg) + '</b></div></div>';
     }).join('');
 
-    list.innerHTML = '<div class="sec"><h2>Overall, last 60 days</h2></div><div class="bcard">' + rows + '</div>' +
-      (others.length ? '' : '<p class="note">You are the first one here. Others will show up once they join.</p>') +
-      '<div class="sec"><h2>By habit</h2></div><div class="bcard">' + hab + '</div>';
+    var sw = '<div class="seg" role="group" aria-label="Time window">' + ['7', '30', '60'].map(function (n) {
+      return '<button type="button" class="bwbtn" data-bwin="' + n + '" aria-pressed="' + (W === n ? 'true' : 'false') + '">' + n + ' days</button>';
+    }).join('') + '</div>';
+
+    list.innerHTML = '<div class="sec"><h2>Ranking</h2>' + sw + '</div>' +
+      '<p class="hint" style="margin:0 0 4px">' + gap + '</p>' +
+      (rows ? '<div class="bcard">' + rows + '</div>' : '') +
+      (startRows ? '<div class="sec"><h2>Just getting started</h2></div><div class="bcard">' + startRows + '</div>' : '') +
+      '<div class="sec"><h2>By habit, last ' + W + ' days</h2></div><div class="bcard">' + hab + '</div>';
   }
 
   if (cloud) { route(); initAuth(); } else route();
