@@ -207,6 +207,8 @@
   .dcol .mo { font-size: 0.62rem; height: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; }
   .dcol .wd, .dcol .dn { font-size: 0.64rem; color: var(--muted); }
   .dcol.today .wd { color: var(--fg); font-weight: 700; }
+  .dcol.wk { margin-left: 8px; }
+  .chip { font-size: 0.9rem; font-family: var(--font-display); min-width: 40px; text-align: center; }
   .cell {
     position: relative; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line);
     background: var(--bg); font-weight: 700; font-size: 0.95rem; display: grid; place-items: center; padding: 0;
@@ -408,13 +410,6 @@
     <div class="hrow">
       <label for="hStart">Tracking since</label>
       <input id="hStart" type="date">
-    </div>
-    <div class="hrow" style="margin-top:10px">
-      <span class="vlabel">Layout</span>
-      <div class="seg" role="group" aria-label="Layout">
-        <button type="button" id="viewGrid" data-view="grid">Grid</button>
-        <button type="button" id="viewStrip" data-view="strip">Strip</button>
-      </div>
     </div>
     <p class="hint" id="hHint" style="margin:10px 0 0"></p>
   </div>
@@ -940,8 +935,6 @@
   ];
   var STATE_WORDS = { win: 'done', loss: 'missed', rest: 'rest day', skip: 'excused miss', pending: 'not done yet', untracked: 'before tracking started' };
   var habScrolled = false;
-  var habView = 'grid';
-  try { if (localStorage.getItem('fuel-habit-view') === 'strip') habView = 'strip'; } catch (e) {}
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function keyOf(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
@@ -1084,7 +1077,7 @@
       var sym = st === 'win' ? '&#10003;' : st === 'loss' ? '&times;' : st === 'skip' ? '&ndash;' : st === 'rest' ? 'R' : '';
       var mo = (d.getDate() === 1 || k === keys[0]) ? MONTHS[d.getMonth()] : '';
       var when = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-      return '<div class="dcol' + (isToday ? ' today' : '') + '"><span class="mo">' + mo + '</span>' +
+      return '<div class="dcol' + (isToday ? ' today' : '') + (d.getDay() === 1 && k !== keys[0] ? ' wk' : '') + '"><span class="mo">' + mo + '</span>' +
         '<span class="wd">' + (isToday ? 'Today' : 'SMTWTFS'.charAt(d.getDay())) + '</span>' +
         '<button type="button" class="cell ' + st + (au ? ' auto' : '') + '" data-act="hab" data-id="' + h.id + '" data-day="' + k + '" aria-label="' +
           esc(lab.name) + ', ' + esc(when) + ': ' + STATE_WORDS[st] + '. Tap to change.">' + sym + '</button>' +
@@ -1092,8 +1085,9 @@
     }).join('');
 
     var sk = streakOf(h, today, start), chip;
-    if (!sk) chip = '<span class="chip none">No streak yet</span>';
-    else chip = '<span class="chip ' + sk.type + '">' + (sk.type === 'win' ? 'Win streak ' : 'Loss streak ') + sk.n + (sk.n === 1 ? ' day' : ' days') + '</span>';
+    if (!sk) chip = '<span class="chip none" title="No streak yet">&ndash;</span>';
+    else chip = '<span class="chip ' + sk.type + '" title="' + (sk.type === 'win' ? 'Win' : 'Loss') + ' streak: ' + sk.n + (sk.n === 1 ? ' day' : ' days') +
+      '" aria-label="' + (sk.type === 'win' ? 'Win' : 'Loss') + ' streak, ' + sk.n + (sk.n === 1 ? ' day' : ' days') + '">' + (sk.type === 'win' ? 'W' : 'L') + sk.n + '</span>';
 
     // Last 60 days: yesterday and the 59 days before it.
     var done60 = 0, tracked60 = 0, i, k, st;
@@ -1119,7 +1113,7 @@
 
     return '<section class="hab" aria-label="' + esc(lab.name) + '">' +
       '<div class="hab-head"><div><h3>' + esc(lab.name) + '</h3><div class="rule">' + esc(lab.rule) + '</div></div>' + chip + '</div>' +
-      (habView === 'strip' ? '<div class="strip">' + cells + '</div>' : gridHTML(h, today, start, lab, wc)) +
+      '<div class="strip">' + cells + '</div>' +
       '<div class="stats">' +
         statHTML(lab60, done60, target60, h.weekly ? 'workouts' : 'days', '') +
         statHTML(monthName, doneM, targetM, h.weekly ? 'workouts' : 'days', left + (left === 1 ? ' day' : ' days') + ' left') +
@@ -1141,12 +1135,9 @@
     $('hToday').textContent = 'Today: ' + wins + ' of ' + HABITS.length + ' done';
     $('hStart').value = hs.start; $('hStart').max = today;
     $('todayList').innerHTML = todayRowsHTML(today, hs.start);
-    $('viewGrid').setAttribute('aria-pressed', habView === 'grid' ? 'true' : 'false');
-    $('viewStrip').setAttribute('aria-pressed', habView === 'strip' ? 'true' : 'false');
-    $('hHint').textContent = (habView === 'grid'
-      ? 'Each grid shows yesterday and the 59 days before it, plus today, with one column per week and Monday at the top. '
-      : 'Each row shows yesterday and the 59 days before it, plus today on the right. Swipe a row sideways to see older days. ') +
-      'Tap any day to mark it done or not done. For the strength workout, tap once for done, a second time for a logged rest day, and a third time to clear it. Days before the tracking date do not count. A dot in a box means it was filled in from your food log.';
+    $('hHint').textContent = 'Each row shows yesterday and the 59 days before it, plus today on the right, with a small gap between weeks. Swipe a row sideways to see older days. ' +
+      'Tap any day to mark it done or not done. For the strength workout, tap once for done, a second time for a logged rest day, and a third time to clear it. ' +
+      'W is your current win streak and L is your current loss streak, in days. Days before the tracking date do not count. A dot in a box means it was filled in from your food log.';
     host.innerHTML = HABITS.map(function (h) { return habitHTML(h, today, keys, hs.start); }).join('');
     [].forEach.call(host.querySelectorAll('.strip'), function (s, n) {
       s.scrollLeft = (habScrolled && prev[n] !== undefined) ? prev[n] : s.scrollWidth;
@@ -1192,13 +1183,6 @@
       var p = b.getAttribute('data-page');
       if (location.hash === (p === 'habits' ? '#habits' : '')) return;
       location.hash = p === 'habits' ? 'habits' : 'food';
-    });
-  });
-  [$('viewGrid'), $('viewStrip')].forEach(function (b) {
-    b.addEventListener('click', function () {
-      habView = b.getAttribute('data-view');
-      try { localStorage.setItem('fuel-habit-view', habView); } catch (e) {}
-      habScrolled = false; renderHabits();
     });
   });
   $('hStart').addEventListener('change', function (e) {
