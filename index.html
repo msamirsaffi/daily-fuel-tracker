@@ -1337,7 +1337,8 @@
     if (!cloud || !user || !state.share || !state.share.on || !state.share.name) return Promise.resolve();
     return cloud.from('leaderboard')
       .upsert({ user_id: user.id, name: state.share.name, stats: computeStats(), updated_at: new Date().toISOString() })
-      .then(function (r) { if (r.error) { boardMsg = 'Could not update your leaderboard entry: ' + r.error.message; } }, function () {});
+      .then(function (r) { boardMsg = r.error ? 'Could not save your leaderboard entry: ' + r.error.message : ''; },
+        function () { boardMsg = 'Could not save your leaderboard entry. Check your connection and tap Refresh.'; });
   }
 
   function loadBoard() {
@@ -1349,7 +1350,7 @@
     }).then(function (r) {
       boardBusy = false;
       if (r.error) boardMsg = 'Could not load the leaderboard. Tap Refresh to try again.';
-      else { boardRows = r.data || []; boardMsg = ''; }
+      else boardRows = r.data || [];
       renderBoard();
     }, function () {
       boardBusy = false; boardMsg = 'Could not load the leaderboard. Tap Refresh to try again.'; renderBoard();
