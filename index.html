@@ -223,6 +223,46 @@
   .stat .val { font-size: 0.9rem; font-weight: 600; margin-top: 1px; }
   .stat .val small { color: var(--muted); font-weight: 500; font-size: 0.75rem; }
   .stat .bar { margin: 5px 0 0; }
+  /* Today checklist */
+  .today-card h3 { margin: 0 0 4px; }
+  .trow {
+    display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 8px 0;
+    background: none; border: 0; border-top: 1px solid var(--line); text-align: left;
+  }
+  .trow:first-child { border-top: 0; }
+  .trow .box {
+    width: 28px; height: 28px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--bg);
+    display: grid; place-items: center; font-weight: 700; flex: 0 0 auto;
+  }
+  .trow.win .box { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .trow.loss .box { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+  .trow .tname { flex: 1; min-width: 0; font-weight: 600; font-size: 0.92rem; line-height: 1.25; }
+  .trow .tnote { font-size: 0.76rem; color: var(--muted); text-align: right; max-width: 45%; }
+  .trow.loss .tnote { color: var(--warn); font-weight: 600; }
+
+  /* Layout switch */
+  .vlabel { font-size: 0.85rem; font-weight: 600; }
+  .seg { display: inline-grid; grid-auto-flow: column; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 3px; }
+  .seg button { min-height: 38px; padding: 0 16px; border: 0; border-radius: 8px; background: transparent; font-weight: 600; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 0 0 1px var(--line); }
+
+  /* Heatmap grid: one column per week, Monday at the top */
+  .heat {
+    display: grid; grid-auto-flow: column; grid-template-rows: 14px repeat(7, auto);
+    grid-template-columns: 14px repeat(var(--cols), minmax(0, 1fr)); gap: 3px; padding: 10px 14px 6px 0;
+  }
+  .heat .hl { font-size: 0.62rem; color: var(--muted); display: grid; place-items: center; }
+  .heat .hm { font-size: 0.62rem; font-weight: 700; color: var(--muted); text-transform: uppercase; white-space: nowrap; }
+  .hc {
+    position: relative; aspect-ratio: 1; width: 100%; min-width: 0; padding: 0; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--muted); font-size: 0.68rem; font-weight: 600; display: grid; place-items: center;
+  }
+  .hc.win { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .hc.loss { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+  .hc.skip { background: transparent; border-style: dashed; }
+  .hc.untracked { background: transparent; opacity: 0.4; }
+  .hc.today { outline: 2px solid var(--fg); outline-offset: 1px; z-index: 1; }
+  .hc.auto::after { content: ""; position: absolute; top: 2px; right: 2px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0.6; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -346,7 +386,11 @@
     <div class="topline"><h1>Habits</h1><span class="date" id="hDate"></span></div>
     <p class="hint num" id="hToday"></p>
   </div>
-  <div class="panel">
+  <div class="panel today-card">
+    <h3>Today</h3>
+    <div id="todayList"></div>
+  </div>
+  <div class="panel" style="margin-top:10px">
     <div class="legend" aria-hidden="true">
       <span><i class="sw win"></i>Done</span>
       <span><i class="sw loss"></i>Missed</span>
@@ -357,7 +401,14 @@
       <label for="hStart">Tracking since</label>
       <input id="hStart" type="date">
     </div>
-    <p class="hint" style="margin:10px 0 0">Each row shows yesterday and the 59 days before it, plus today on the right. Swipe a row sideways to see older days, and tap any day to mark it done or not done. Days before the tracking date do not count. A dot in a box means it was filled in from your food log.</p>
+    <div class="hrow" style="margin-top:10px">
+      <span class="vlabel">Layout</span>
+      <div class="seg" role="group" aria-label="Layout">
+        <button type="button" id="viewGrid" data-view="grid">Grid</button>
+        <button type="button" id="viewStrip" data-view="strip">Strip</button>
+      </div>
+    </div>
+    <p class="hint" id="hHint" style="margin:10px 0 0"></p>
   </div>
   <div id="habList"></div>
   <p class="note">Water, calories and protein use the goals on the Food page. Weeks run Monday to Sunday, and the strength workout needs 5 a week, so up to 2 missed days in a week do not count against the streak.</p>
@@ -881,6 +932,8 @@
   ];
   var STATE_WORDS = { win: 'done', loss: 'missed', skip: 'rest day', pending: 'not done yet', untracked: 'before tracking started' };
   var habScrolled = false;
+  var habView = 'grid';
+  try { if (localStorage.getItem('fuel-habit-view') === 'strip') habView = 'strip'; } catch (e) {}
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function keyOf(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
@@ -953,6 +1006,54 @@
     return { type: last, n: n };
   }
 
+  function daysBetween(a, b) { return Math.round((parseKey(b) - parseKey(a)) / 86400000); }
+
+  // One column per week (Monday at the top) covering the last 60 days plus today.
+  function gridHTML(h, today, start, lab, wc) {
+    var first = addDays(today, -60), w0 = weekStartKey(first);
+    var cols = Math.floor(daysBetween(w0, today) / 7) + 1;
+    var out = '<div class="heat" style="--cols:' + cols + '"><span></span>', r, c, k, d, st, au, mo, when;
+    'MTWTFSS'.split('').forEach(function (l) { out += '<span class="hl">' + l + '</span>'; });
+    for (c = 0; c < cols; c++) {
+      mo = '';
+      for (r = 0; r < 7; r++) {
+        k = addDays(w0, 7 * c + r);
+        if (k < first || k > today) continue;
+        d = parseKey(k);
+        if (d.getDate() === 1) mo = MONTHS[d.getMonth()];
+        else if (mo === '' && c === 0) mo = MONTHS[d.getMonth()];
+      }
+      out += '<span class="hm">' + mo + '</span>';
+      for (r = 0; r < 7; r++) {
+        k = addDays(w0, 7 * c + r);
+        if (k < first || k > today) { out += '<span></span>'; continue; }
+        d = parseKey(k);
+        st = stateOf(h, k, today, start, wc);
+        au = h.auto && manualVal(k, h.id) === undefined && st !== 'untracked';
+        when = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+        out += '<button type="button" class="hc ' + st + (au ? ' auto' : '') + (k === today ? ' today' : '') +
+          '" data-act="hab" data-id="' + h.id + '" data-day="' + k + '" aria-label="' + esc(lab.name) + ', ' + esc(when) + ': ' +
+          STATE_WORDS[st] + '. Tap to change.">' + d.getDate() + '</button>';
+      }
+    }
+    return out + '</div>';
+  }
+
+  function todayRowsHTML(today, start) {
+    var t = dayTotals(today), g = state.goals;
+    return HABITS.map(function (h) {
+      var lab = habitLabel(h), st = stateOf(h, today, today, start, {}), note = '';
+      if (h.id === 'water') note = Math.round(t.water) + ' of ' + g.water + ' oz';
+      else if (h.id === 'protein') note = g1(t.pro) + ' of ' + g.pro + ' g';
+      else if (h.id === 'calories') note = Math.round(t.cal).toLocaleString() + ' of ' + Math.round(g.cal).toLocaleString() + ' cal' + (st === 'pending' ? ', checked at day end' : '');
+      else if (st === 'win') note = 'Done';
+      return '<button type="button" class="trow ' + st + '" data-act="hab" data-id="' + h.id + '" data-day="' + today + '" aria-label="' +
+        esc(lab.name) + ': ' + STATE_WORDS[st] + '. Tap to change.">' +
+        '<span class="box">' + (st === 'win' ? '&#10003;' : st === 'loss' ? '&times;' : '') + '</span>' +
+        '<span class="tname">' + esc(lab.name) + '</span><span class="tnote num">' + esc(note) + '</span></button>';
+    }).join('');
+  }
+
   function statHTML(label, done, target, noun, extra) {
     var pct = target > 0 ? Math.min(100, Math.round(done / target * 100)) : 0;
     var val = target > 0 ? done + ' of ' + target + ' ' + noun : 'No days tracked yet';
@@ -1003,7 +1104,7 @@
 
     return '<section class="hab" aria-label="' + esc(lab.name) + '">' +
       '<div class="hab-head"><div><h3>' + esc(lab.name) + '</h3><div class="rule">' + esc(lab.rule) + '</div></div>' + chip + '</div>' +
-      '<div class="strip">' + cells + '</div>' +
+      (habView === 'strip' ? '<div class="strip">' + cells + '</div>' : gridHTML(h, today, start, lab, wc)) +
       '<div class="stats">' +
         statHTML(lab60, done60, target60, h.weekly ? 'workouts' : 'days', '') +
         statHTML(monthName, doneM, targetM, h.weekly ? 'workouts' : 'days', left + (left === 1 ? ' day' : ' days') + ' left') +
@@ -1024,6 +1125,13 @@
     $('hDate').textContent = parseKey(today).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     $('hToday').textContent = 'Today: ' + wins + ' of ' + HABITS.length + ' done';
     $('hStart').value = hs.start; $('hStart').max = today;
+    $('todayList').innerHTML = todayRowsHTML(today, hs.start);
+    $('viewGrid').setAttribute('aria-pressed', habView === 'grid' ? 'true' : 'false');
+    $('viewStrip').setAttribute('aria-pressed', habView === 'strip' ? 'true' : 'false');
+    $('hHint').textContent = (habView === 'grid'
+      ? 'Each grid shows yesterday and the 59 days before it, plus today, with one column per week and Monday at the top. '
+      : 'Each row shows yesterday and the 59 days before it, plus today on the right. Swipe a row sideways to see older days. ') +
+      'Tap any day to mark it done or not done. Days before the tracking date do not count. A dot in a box means it was filled in from your food log.';
     host.innerHTML = HABITS.map(function (h) { return habitHTML(h, today, keys, hs.start); }).join('');
     [].forEach.call(host.querySelectorAll('.strip'), function (s, n) {
       s.scrollLeft = (habScrolled && prev[n] !== undefined) ? prev[n] : s.scrollWidth;
@@ -1062,6 +1170,13 @@
       var p = b.getAttribute('data-page');
       if (location.hash === (p === 'habits' ? '#habits' : '')) return;
       location.hash = p === 'habits' ? 'habits' : 'food';
+    });
+  });
+  [$('viewGrid'), $('viewStrip')].forEach(function (b) {
+    b.addEventListener('click', function () {
+      habView = b.getAttribute('data-view');
+      try { localStorage.setItem('fuel-habit-view', habView); } catch (e) {}
+      habScrolled = false; renderHabits();
     });
   });
   $('hStart').addEventListener('change', function (e) {
