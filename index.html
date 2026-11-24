@@ -509,7 +509,7 @@
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function fresh() {
-    return { goals: { cal: 2200, pro: 150, caf: 400, water: 128 }, foods: clone(STARTER), days: {}, seen: STARTER.map(function (f) { return f.id; }), v: 3, ts: 0, palette: 'forest', habits: { start: todayKey(), checks: {} } };
+    return { goals: { cal: 2200, pro: 150, caf: 400, water: 128 }, foods: clone(STARTER), days: {}, seen: STARTER.map(function (f) { return f.id; }), v: 4, ts: 0, palette: 'ocean', habits: { start: todayKey(), checks: {} } };
   }
   function readLocal(key) {
     try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
@@ -541,7 +541,9 @@
       if (!s.habits || typeof s.habits !== 'object') s.habits = { start: todayKey(), checks: {} };
       if (!s.habits.checks) s.habits.checks = {};
       if (!s.habits.start) s.habits.start = todayKey();
-      if (s.palette !== 'ocean' && s.palette !== 'forest') s.palette = 'forest';
+      if (s.palette !== 'ocean' && s.palette !== 'forest') s.palette = 'ocean';
+      // Version 4: Ocean becomes the default color scheme. Anyone can still switch back to Forest.
+      if (s.v < 4) { s.palette = 'ocean'; s.v = 4; }
       if (s.v < 3) {
         if (s.goals.water === 100) s.goals.water = 128;
         s.v = 3;
