@@ -222,6 +222,25 @@
   .seg .bwbtn { padding: 0 10px; font-size: 0.82rem; }
   .bmsg { color: var(--warn); font-size: 0.82rem; font-weight: 600; margin: 8px 0 0; }
 
+  /* Pink color scheme: deep pink accent on soft blush backgrounds, orange for misses */
+  :root[data-palette="pink"] {
+    --bg: #fbf1f4; --surface: #ffffff; --surface-2: #f4e1e8; --fg: #2a1520; --muted: #7a5a68; --line: #ecd0da;
+    --accent: #c2185b; --accent-fg: #ffffff; --protein: #1a8f8a; --fat: #b7791f; --carb: #7a5bd0; --caf: #8a5a2b;
+    --water: #1c8aa8; --warn: #d9480f; --warn-bg: #fdeadf; --win-bg: #fbdce8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-palette="pink"]:not([data-theme="light"]) {
+      --bg: #1b0f15; --surface: #28171f; --surface-2: #35202a; --fg: #f6e6ed; --muted: #b895a5; --line: #4a2d3b;
+      --accent: #ff7eb6; --accent-fg: #3a0b21; --protein: #5fd3c8; --fat: #e3a95a; --carb: #b9a1f0; --caf: #d4a06a;
+      --water: #6fd3ee; --warn: #ff9a5c; --warn-bg: #3a2216; --win-bg: #3b1a2b; color-scheme: dark;
+    }
+  }
+  :root[data-palette="pink"][data-theme="dark"] {
+    --bg: #1b0f15; --surface: #28171f; --surface-2: #35202a; --fg: #f6e6ed; --muted: #b895a5; --line: #4a2d3b;
+    --accent: #ff7eb6; --accent-fg: #3a0b21; --protein: #5fd3c8; --fat: #e3a95a; --carb: #b9a1f0; --caf: #d4a06a;
+    --water: #6fd3ee; --warn: #ff9a5c; --warn-bg: #3a2216; --win-bg: #3b1a2b; color-scheme: dark;
+  }
+
   /* Bottom tab bar */
   .tabs {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 8; background: var(--surface); border-top: 1px solid var(--line);
@@ -435,6 +454,7 @@
       <div class="seg" role="group" aria-label="Color scheme">
         <button type="button" class="palbtn" data-palette="forest">Forest</button>
         <button type="button" class="palbtn" data-palette="ocean">Ocean</button>
+        <button type="button" class="palbtn" data-palette="pink">Pink</button>
       </div>
     </div>
   </div>
@@ -484,6 +504,7 @@
       <div class="seg" role="group" aria-label="Color scheme">
         <button type="button" class="palbtn" data-palette="forest">Forest</button>
         <button type="button" class="palbtn" data-palette="ocean">Ocean</button>
+        <button type="button" class="palbtn" data-palette="pink">Pink</button>
       </div>
     </div>
   </div>
@@ -590,7 +611,7 @@
       if (!s.habits.off || typeof s.habits.off !== 'object') s.habits.off = {};
       if (!s.habits.start) s.habits.start = todayKey();
       if (!s.share || typeof s.share !== 'object') s.share = { on: false, name: '' };
-      if (s.palette !== 'ocean' && s.palette !== 'forest') s.palette = 'ocean';
+      if (s.palette !== 'ocean' && s.palette !== 'forest' && s.palette !== 'pink') s.palette = 'ocean';
       // Version 4: Ocean becomes the default color scheme. Anyone can still switch back to Forest.
       if (s.v < 4) { s.palette = 'ocean'; s.v = 4; }
       if (s.v < 3) {
